@@ -2,6 +2,7 @@ import lightbug.devices as devices
 import lightbug.services as services
 import lightbug.messages as messages
 import lightbug.protocol as protocol
+import lightbug.util.resilience show catchAndRestart
 import lightbug.util.bitmaps show lightbug3030
 import lightbug.util.bytes show stringifyAllBytes
 
@@ -64,9 +65,17 @@ httpMsgService := services.HttpMsg device comms --serve=false --port=80 --custom
   else if msg.type == messages.BatteryStatus.MT:
     data := messages.BatteryStatus.fromData msg.data
     writer.out.write "$prefix Battery status: $data\n"
+  else if msg.type == messages.Heartbeat.MT:
+    writer.out.write "$prefix Heartbeat\n"
+  else if msg.type == 1004:
+    // field 2 is the data
+    bytes := msg.data.getData 2
+    ascii := msg.data.getDataAscii 2
+    writer.out.write "$prefix LORA message: ascii:$(ascii) bytes:$(stringifyAllBytes bytes --short=true --commas=false --hex=false)\n"
   else:
-    msgStatus := protocol.Header.STATUS_MAP.get msg.msgStatus
-    if not msgStatus: msgStatus = "Unknown"
+    msgStatus := "null"
+    if msg.msgStatus != null:
+      msgStatus = protocol.Header.STATUS_MAP.get msg.msgStatus
     writer.out.write "$prefix Received message ($msgStatus): $(stringifyAllBytes msg.bytesForProtocol --short=true --commas=false --hex=false)\n"
 )
 msgPrinter := services.MsgPrinter comms
@@ -92,6 +101,15 @@ main:
 
   comms.send (messages.BuzzerControl.doMsg --duration=50 --frequency=3.0) --now=true // beep on startup
   sendStartupPage comms --onlyIfNew=false
+
+  in := comms.inbox "lb/mwc" --size=10
+  task:: catchAndRestart "" (::
+    while true:
+      msg := in.receive
+      // LORA and heartbeats
+      if msg.type == 1004 or msg.type == messages.Heartbeat.MT:
+        httpMsgService.queue-messages-for-polling msg
+  )
 
   if isInDevelopment:
     // Just serve the HTTP server
@@ -171,9 +189,11 @@ handle_http_request request/http.RequestIncoming writer/http.ResponseWriter? htt
 
   // Normalized for what httpMsgService expects
   if resource == "index.html": resource = "/" 
-  if resource == "post": resource = "/post" 
+  if resource == "poll": resource = "/poll" 
+  if resource == "post":
+    resource = "/post" 
+    lastPageId = 0 // Just assume that this might have caused a redraw..
   httpMsgService.handle-http-request request writer
-  lastPageId = 0 // Just assume that this might have caused a redraw..
 
 lastPageId := 100
 
