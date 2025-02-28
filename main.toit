@@ -1,7 +1,9 @@
 import lightbug.devices as devices
 import lightbug.services as services
 import lightbug.messages as messages
+import lightbug.protocol as protocol
 import lightbug.util.bitmaps show lightbug3030
+import lightbug.util.bytes show stringifyAllBytes
 
 import .preset-screens
 
@@ -27,7 +29,7 @@ SCREEN_HEIGHT := 122
 
 custom-actions := {
   "MWC Pages": {
-    "Spec": 101,
+    "WiFi": 101,
     "Spec": SPEC-PAGE,
     "Hardware": HARDWARE-PAGE,
     "Containers": CONTAINERS-PAGE,
@@ -39,7 +41,34 @@ custom-actions := {
 // Setup Lightbug device services
 device := devices.ZCard
 comms := services.Comms --device=device
-httpMsgService := services.HttpMsg device.name comms --serve=false --port=80 --custom-actions=custom-actions
+httpMsgService := services.HttpMsg device comms --serve=false --port=80 --custom-actions=custom-actions --response-message-formatter=(:: | writer msg prefix |
+  // TODO it would be nice to have a default one of these provided by httpMsgService
+  if msg.type == messages.LastPosition.MT:
+    data := messages.LastPosition.fromData msg.data
+    writer.out.write "$prefix Last position: $data\n"
+  else if msg.type == messages.Status.MT:
+    data := messages.Status.fromData msg.data
+    writer.out.write "$prefix Status: $data\n"
+  else if msg.type == messages.DeviceIds.MT:
+    data := messages.DeviceIds.fromData msg.data
+    writer.out.write "$prefix Device IDs: $data\n"
+  else if msg.type == messages.DeviceTime.MT:
+    data := messages.DeviceTime.fromData msg.data
+    writer.out.write "$prefix Device time: $data\n"
+  else if msg.type == messages.Temperature.MT:
+    data := messages.Temperature.fromData msg.data
+    writer.out.write "$prefix Temperature: $data\n"
+  else if msg.type == messages.Pressure.MT:
+    data := messages.Pressure.fromData msg.data
+    writer.out.write "$prefix Pressure: $data\n"
+  else if msg.type == messages.BatteryStatus.MT:
+    data := messages.BatteryStatus.fromData msg.data
+    writer.out.write "$prefix Battery status: $data\n"
+  else:
+    msgStatus := protocol.Header.STATUS_MAP.get msg.msgStatus
+    if not msgStatus: msgStatus = "Unknown"
+    writer.out.write "$prefix Received message ($msgStatus): $(stringifyAllBytes msg.bytesForProtocol --short=true --commas=false --hex=false)\n"
+)
 msgPrinter := services.MsgPrinter comms
 
 // Have some state
@@ -123,7 +152,7 @@ handle_http_request request/http.RequestIncoming writer/http.ResponseWriter? htt
   connected-clients[request.connection_.socket_.peer-address.ip] = true
   if connected-clients.size > connClients:
     log.info "New client: $request.connection_.socket_.peer-address.ip"
-    updateStartupPageClients comms --onlyIfNew=false --connectedClients=connected-clients.size
+    updateStartupPageClients comms
 
   if resource == "custom":
     body := request.body.read-all
@@ -152,6 +181,9 @@ sendStartupPage comms/services.Comms --onlyIfNew=true:
   if onlyIfNew and lastPageId == 101: return
   lastPageId = 101
   // TODO display a QR code..?
+  line3 := ""
+  if connected-clients.size >= 1:
+    line3 = "Clients: $connected-clients.size"
   comms.send (messages.TextPage.toMsg
       --pageId=101
       --pageTitle="Lightbug @ MWC 2025"
@@ -160,16 +192,12 @@ sendStartupPage comms/services.Comms --onlyIfNew=true:
   ) --now=true
   comms.send (messages.DrawBitmap.toMsg --pageId=101 --bitmapData=lightbug3030 --bitmapWidth=30 --bitmapHeight=30 --bitmapX=( SCREEN_WIDTH - 30 ) --bitmapY=0) --now=true
 
-updateStartupPageClients comms/services.Comms --onlyIfNew=true --connectedClients/int:
+updateStartupPageClients comms/services.Comms:
   if lastPageId != 101: return // only update 101 page if it is the last one
   connClientsLine := ""
-  if connectedClients >= 1:
-    connClientsLine = "Clients: $connectedClients"
-  comms.send (messages.TextPage.toMsg
-      --pageId=101
-      --pageTitle="Lightbug @ MWC 2025"
-      --line3="$connClientsLine"
-  ) --now=true
+  if connected-clients.size >= 1:
+    connClientsLine = "Clients: $connected-clients.size"
+  comms.send (messages.TextPage.toMsg --pageId=101 --line3="$connClientsLine" ) --now=true // only update line 3
   comms.send (messages.DrawBitmap.toMsg --pageId=101 --bitmapData=lightbug3030 --bitmapWidth=30 --bitmapHeight=30 --bitmapX=( SCREEN_WIDTH - 30 ) --bitmapY=0) --now=true
 
 sendPresetPage comms/services.Comms pageId/int --onlyIfNew=true:
