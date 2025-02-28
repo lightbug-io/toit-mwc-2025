@@ -3,6 +3,8 @@ import lightbug.services as services
 import lightbug.messages as messages
 import lightbug.util.bitmaps show lightbug3030
 
+import .preset-screens
+
 import log
 import monitor
 
@@ -23,14 +25,27 @@ import dns_simple_server as dns
 SCREEN_WIDTH := 250
 SCREEN_HEIGHT := 122
 
+custom-actions := {
+  "MWC Pages": {
+    "Spec": 101,
+    "Spec": SPEC-PAGE,
+    "Hardware": HARDWARE-PAGE,
+    "Containers": CONTAINERS-PAGE,
+    "Shipping": SHIPPING-PAGE,
+    "Tagline": TAGLINE-PAGE,
+  },
+}
+
 // Setup Lightbug device services
 device := devices.ZCard
 comms := services.Comms --device=device
-httpMsgService := services.HttpMsg device.name comms --serve=false --port=80
+httpMsgService := services.HttpMsg device.name comms --serve=false --port=80 --custom-actions=custom-actions
 msgPrinter := services.MsgPrinter comms
 
 // Have some state
 connected-clients := {:}
+ssid := ""
+password := ""
 
 isInDevelopment -> bool:
   defines := assets.decode.get "jag.defines"
@@ -41,12 +56,13 @@ isInDevelopment -> bool:
   return defines.get "lb-dev" --if-absent=(:false) --if-present=(:true)
 
 main:
-  // TODO loop around and generate a new one each time..
-  ssid := randomSSID
-  password := randomPassword
+  // TODO loop around and generate a new one each time?
+  ssid = randomSSID
+  password = randomPassword
   log.info "Running with ssid $ssid and password $password"
 
-  sendStartupPageAndBeep comms ssid password --onlyIfNew=false
+  comms.send (messages.BuzzerControl.doMsg --duration=50 --frequency=3.0) --now=true // beep on startup
+  sendStartupPage comms --onlyIfNew=false
 
   if isInDevelopment:
     // Just serve the HTTP server
@@ -107,44 +123,59 @@ handle_http_request request/http.RequestIncoming writer/http.ResponseWriter? htt
   connected-clients[request.connection_.socket_.peer-address.ip] = true
   if connected-clients.size > connClients:
     log.info "New client: $request.connection_.socket_.peer-address.ip"
-    sendConnectedPageAndBeep comms --onlyIfNew=false --connectedClients=connected-clients.size
+    updateStartupPageClients comms --onlyIfNew=false --connectedClients=connected-clients.size
+
+  if resource == "custom":
+    body := request.body.read-all
+    bodyS := body.to-string
+    writer.headers.set "Content-Type" "text/plain"
+    writer.write_headers 200
+    if bodyS == "101":
+      sendStartupPage comms --onlyIfNew=false
+    if bodyS == "$SPEC-PAGE" or bodyS == "$HARDWARE-PAGE" or bodyS == "$CONTAINERS-PAGE" or bodyS == "$SHIPPING-PAGE" or bodyS == "$TAGLINE-PAGE":
+      sendPresetPage comms (int.parse bodyS)
+      writer.out.write "Received preset page request for $bodyS\n"
+    writer.close
+      
+    return // custom but unknown
+
 
   // Normalized for what httpMsgService expects
   if resource == "index.html": resource = "/" 
   if resource == "post": resource = "/post" 
   httpMsgService.handle-http-request request writer
+  lastPageId = 0 // Just assume that this might have caused a redraw..
 
 lastPageId := 100
 
-sendStartupPageAndBeep comms/services.Comms ssid/string password/string --onlyIfNew=true:
+sendStartupPage comms/services.Comms --onlyIfNew=true:
   if onlyIfNew and lastPageId == 101: return
   lastPageId = 101
-  comms.send (messages.BuzzerControl.doMsg --duration=50 --frequency=3.0)
   // TODO display a QR code..?
   comms.send (messages.TextPage.toMsg
       --pageId=101
       --pageTitle="Lightbug @ MWC 2025"
-      --line1="Connect to the WiFi hotspot"
-      --line2="to continue..."
-      --line3="SSID: $ssid"
-      --line4="Password: $password"
-  )
-  comms.send (messages.DrawBitmap.toMsg --pageId=101 --bitmapData=lightbug3030 --bitmapWidth=30 --bitmapHeight=30 --bitmapX=( SCREEN_WIDTH - 30 ) --bitmapY=0)
+      --line1="Connect to the WiFi hotspot:"
+      --line2="$ssid / $password"
+  ) --now=true
+  comms.send (messages.DrawBitmap.toMsg --pageId=101 --bitmapData=lightbug3030 --bitmapWidth=30 --bitmapHeight=30 --bitmapX=( SCREEN_WIDTH - 30 ) --bitmapY=0) --now=true
 
-sendConnectedPageAndBeep comms/services.Comms --onlyIfNew=true --connectedClients/int:
-  if onlyIfNew and lastPageId == 102: return
-  lastPageId = 102
+updateStartupPageClients comms/services.Comms --onlyIfNew=true --connectedClients/int:
+  if lastPageId != 101: return // only update 101 page if it is the last one
   connClientsLine := ""
   if connectedClients >= 1:
     connClientsLine = "Clients: $connectedClients"
   comms.send (messages.TextPage.toMsg
-      --pageId=102
+      --pageId=101
       --pageTitle="Lightbug @ MWC 2025"
-      --line1="Use the page to interact"
-      --line2="with this device"
       --line3="$connClientsLine"
-  )
-  comms.send (messages.DrawBitmap.toMsg --pageId=102 --bitmapData=lightbug3030 --bitmapWidth=30 --bitmapHeight=30 --bitmapX=( SCREEN_WIDTH - 30 ) --bitmapY=0)
+  ) --now=true
+  comms.send (messages.DrawBitmap.toMsg --pageId=101 --bitmapData=lightbug3030 --bitmapWidth=30 --bitmapHeight=30 --bitmapX=( SCREEN_WIDTH - 30 ) --bitmapY=0) --now=true
+
+sendPresetPage comms/services.Comms pageId/int --onlyIfNew=true:
+  if onlyIfNew and lastPageId == pageId: return
+  lastPageId = pageId
+  comms.sendRawBytes presetScreens[pageId] --flush=false // Don't flush, as these are large ammounts of bytes
 
 randomSSID -> string:
   r := random 1000 9999
