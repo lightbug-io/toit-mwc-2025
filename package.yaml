@@ -1,0 +1,9 @@
+dependencies:
+  dns_simple_server:
+    url: github.com/toitlang/pkg-dns-simple-server
+    version: ^0.2.1
+  http:
+    url: github.com/toitlang/pkg-http
+    version: ^2.8.0
+  lightbug:
+    path: ./../../pkg/lightbug
