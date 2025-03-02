@@ -10,6 +10,7 @@ import .preset-screens
 
 import log
 import monitor
+import gpio
 
 import encoding.url
 
@@ -37,10 +38,17 @@ custom-actions := {
     "Shipping": SHIPPING-PAGE,
     "Tagline": TAGLINE-PAGE,
   },
+  "LED": {
+    "Off": 0,
+    "R": 1,
+    "G": 2,
+    "B": 3,
+  }
 }
 
 // Setup Lightbug device services
 device := devices.ZCard
+stobe := Strobe
 comms := services.Comms --device=device
 httpMsgService := services.HttpMsg device comms --serve=false --port=80 --custom-actions=custom-actions --response-message-formatter=(:: | writer msg prefix |
   // TODO it would be nice to have a default one of these provided by httpMsgService
@@ -182,6 +190,18 @@ handle_http_request request/http.RequestIncoming writer/http.ResponseWriter? htt
     if bodyS == "$SPEC-PAGE" or bodyS == "$HARDWARE-PAGE" or bodyS == "$CONTAINERS-PAGE" or bodyS == "$SHIPPING-PAGE" or bodyS == "$TAGLINE-PAGE":
       sendPresetPage comms (int.parse bodyS)
       writer.out.write "Received preset page request for $bodyS\n"
+    if bodyS == "0":
+      stobe.set true true true
+      writer.out.write "Set R\n"
+    if bodyS == "1":
+      stobe.set false true true
+      writer.out.write "Set R\n"
+    if bodyS == "2":
+      stobe.set true false true
+      writer.out.write "Set G\n"
+    if bodyS == "3":
+      stobe.set true true false
+      writer.out.write "Set B\n"
     writer.close
       
     return // custom but unknown
@@ -231,3 +251,20 @@ randomSSID -> string:
 randomPassword -> string:
   r := random 1000 9999
   return "pass-$r"
+
+// The strobe is not included in the lightbug pkg yet, so define it here
+class Strobe:
+
+  pinR/ gpio.Pin
+  pinG/ gpio.Pin
+  pinB/ gpio.Pin
+
+  constructor:
+    pinR = gpio.Pin 21 --output=true
+    pinG = gpio.Pin 22 --output=true
+    pinB = gpio.Pin 23 --output=true
+
+  set r/bool g/bool b/bool:
+    pinR.set (if r: 1 else: 0)
+    pinG.set (if g: 1 else: 0)
+    pinB.set (if b: 1 else: 0)
