@@ -37,6 +37,7 @@ custom-actions := {
     "Containers": CONTAINERS-PAGE,
     "Shipping": SHIPPING-PAGE,
     "Tagline": TAGLINE-PAGE,
+    "Tagline 2": TAGLINE2-PAGE,
   },
   "LED": {
     "Off": 0,
@@ -187,7 +188,7 @@ handle_http_request request/http.RequestIncoming writer/http.ResponseWriter? htt
     writer.write_headers 200
     if bodyS == "101":
       sendStartupPage comms --onlyIfNew=false
-    if bodyS == "$SPEC-PAGE" or bodyS == "$HARDWARE-PAGE" or bodyS == "$CONTAINERS-PAGE" or bodyS == "$SHIPPING-PAGE" or bodyS == "$TAGLINE-PAGE":
+    if bodyS == "$SPEC-PAGE" or bodyS == "$HARDWARE-PAGE" or bodyS == "$CONTAINERS-PAGE" or bodyS == "$SHIPPING-PAGE" or bodyS == "$TAGLINE-PAGE" or bodyS == "$TAGLINE2-PAGE":
       sendPresetPage comms (int.parse bodyS)
       writer.out.write "Received preset page request for $bodyS\n"
     if bodyS == "0":
