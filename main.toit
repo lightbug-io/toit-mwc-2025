@@ -153,7 +153,7 @@ run_dns network/net.Interface -> none:
 
 run_http network/net.Interface httpMsgService/services.HttpMsg:
   socket := network.tcp_listen 80
-  server := http.Server --logger=(log.Logger log.INFO-LEVEL log.DefaultTarget) --max-tasks=25
+  server := http.Server --logger=(log.Logger log.INFO-LEVEL log.DefaultTarget) --max-tasks=10
   server.listen socket:: | request writer |
     handle_http_request request writer httpMsgService
 
@@ -222,14 +222,14 @@ sendStartupPage comms/services.Comms --onlyIfNew=true:
   if onlyIfNew and lastPageId == 101: return
   lastPageId = 101
   // TODO display a QR code..?
-  line3 := ""
+  line2 := ""
   if connected-clients.size >= 1:
-    line3 = "Clients: $connected-clients.size"
+    line2 = "Clients: $connected-clients.size"
   comms.send (messages.TextPage.toMsg
       --pageId=101
       --pageTitle="Lightbug @ MWC 2025"
       --line1="Connect to the WiFi hotspot:"
-      --line2="$ssid / $password"
+      // --line2="$ssid / $password"
   ) --now=true
   comms.send (messages.DrawBitmap.toMsg --pageId=101 --bitmapData=lightbug3030 --bitmapWidth=30 --bitmapHeight=30 --bitmapX=( SCREEN_WIDTH - 30 ) --bitmapY=0) --now=true
 
@@ -238,7 +238,7 @@ updateStartupPageClients comms/services.Comms:
   connClientsLine := ""
   if connected-clients.size >= 1:
     connClientsLine = "Clients: $connected-clients.size"
-  comms.send (messages.TextPage.toMsg --pageId=101 --line3="$connClientsLine" ) --now=true // only update line 3
+  comms.send (messages.TextPage.toMsg --pageId=101 --line2="$connClientsLine" ) --now=true // only update line 3
   comms.send (messages.DrawBitmap.toMsg --pageId=101 --bitmapData=lightbug3030 --bitmapWidth=30 --bitmapHeight=30 --bitmapX=( SCREEN_WIDTH - 30 ) --bitmapY=0) --now=true
 
 sendPresetPage comms/services.Comms pageId/int --onlyIfNew=true:
