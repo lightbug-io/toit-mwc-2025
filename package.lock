@@ -2,13 +2,8 @@ sdk: ^2.0.0-alpha.145
 prefixes:
   dns_simple_server: pkg-dns-simple-server
   http: pkg-http
-  lightbug: lightbug
+  lightbug: toit-lightbug
 packages:
-  lightbug:
-    path: ../../pkg/lightbug
-    prefixes:
-      coordinate: toit-coordinate
-      http: pkg-http
   pkg-dns-simple-server:
     url: github.com/toitlang/pkg-dns-simple-server
     name: dns_simple_server
@@ -24,3 +19,11 @@ packages:
     name: coordinate
     version: 1.0.0
     hash: 5db8272fdfbdc0b2e017280940dc537e5e64b361
+  toit-lightbug:
+    url: github.com/lightbug-io/toit-lightbug
+    name: lightbug
+    version: 0.2.0
+    hash: 9d3d526b7c8abbe3fda5abc84400d3842050985c
+    prefixes:
+      coordinate: toit-coordinate
+      http: pkg-http

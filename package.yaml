@@ -6,4 +6,6 @@ dependencies:
     url: github.com/toitlang/pkg-http
     version: ^2.8.0
   lightbug:
-    path: ./../../pkg/lightbug
+    # path: ./../../pkg/lightbug # Used for local development
+    url: github.com/lightbug-io/toit-lightbug
+    version: ^v0.2.0
