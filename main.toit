@@ -2,9 +2,9 @@ import lightbug.devices as devices
 import lightbug.services as services
 import lightbug.messages as messages
 import lightbug.protocol as protocol
-import lightbug.util.resilience show catchAndRestart
-import lightbug.util.bitmaps show lightbug3030
-import lightbug.util.bytes show stringifyAllBytes
+import lightbug.util.resilience show catch-and-restart
+import lightbug.util.bitmaps show lightbug-30-30
+import lightbug.util.bytes show stringify-all-bytes
 
 import .preset-screens
 
@@ -54,38 +54,38 @@ comms := services.Comms --device=device
 httpMsgService := services.HttpMsg device comms --serve=false --port=80 --custom-actions=custom-actions --response-message-formatter=(:: | writer msg prefix |
   // TODO it would be nice to have a default one of these provided by httpMsgService
   if msg.type == messages.LastPosition.MT:
-    data := messages.LastPosition.fromData msg.data
+    data := messages.LastPosition.from-data msg.data
     writer.out.write "$prefix Last position: $data\n"
   else if msg.type == messages.Status.MT:
-    data := messages.Status.fromData msg.data
+    data := messages.Status.from-data msg.data
     writer.out.write "$prefix Status: $data\n"
   else if msg.type == messages.DeviceIds.MT:
-    data := messages.DeviceIds.fromData msg.data
+    data := messages.DeviceIds.from-data msg.data
     writer.out.write "$prefix Device IDs: $data\n"
   else if msg.type == messages.DeviceTime.MT:
-    data := messages.DeviceTime.fromData msg.data
+    data := messages.DeviceTime.from-data msg.data
     writer.out.write "$prefix Device time: $data\n"
   else if msg.type == messages.Temperature.MT:
-    data := messages.Temperature.fromData msg.data
+    data := messages.Temperature.from-data msg.data
     writer.out.write "$prefix Temperature: $data\n"
   else if msg.type == messages.Pressure.MT:
-    data := messages.Pressure.fromData msg.data
+    data := messages.Pressure.from-data msg.data
     writer.out.write "$prefix Pressure: $data\n"
   else if msg.type == messages.BatteryStatus.MT:
-    data := messages.BatteryStatus.fromData msg.data
+    data := messages.BatteryStatus.from-data msg.data
     writer.out.write "$prefix Battery status: $data\n"
   else if msg.type == messages.Heartbeat.MT:
     writer.out.write "$prefix Heartbeat\n"
   else if msg.type == 1004:
     // field 2 is the data
-    bytes := msg.data.getData 2
-    ascii := msg.data.getDataAscii 2
-    writer.out.write "$prefix LORA message: ascii:$(ascii) bytes:$(stringifyAllBytes bytes --short=true --commas=false --hex=false)\n"
+    bytes := msg.data.get-data 2
+    ascii := msg.data.get-data-ascii 2
+    writer.out.write "$prefix LORA message: ascii:$(ascii) bytes:$(stringify-all-bytes bytes --short=true --commas=false --hex=false)\n"
   else:
-    msgStatus := "null"
-    if msg.msgStatus != null:
-      msgStatus = protocol.Header.STATUS_MAP.get msg.msgStatus
-    writer.out.write "$prefix Received message ($msgStatus): $(stringifyAllBytes msg.bytesForProtocol --short=true --commas=false --hex=false)\n"
+    msg-status := "null"
+    if msg.msg-status != null:
+      msg-status = protocol.Header.STATUS_MAP.get msg.msg-status
+    writer.out.write "$prefix Received message ($msg-status): $(stringify-all-bytes msg.bytes-for-protocol --short=true --commas=false --hex=false)\n"
 )
 msgPrinter := services.MsgPrinter comms
 
@@ -108,11 +108,11 @@ main:
   password = randomPassword
   log.info "Running with ssid $ssid and password $password"
 
-  comms.send (messages.BuzzerControl.doMsg --duration=50 --frequency=3.0) --now=true // beep on startup
+  comms.send (messages.BuzzerControl.do-msg --duration=50 --frequency=3.0) --now=true // beep on startup
   sendStartupPage comms --onlyIfNew=false
 
   in := comms.inbox "lb/mwc" --size=10
-  task:: catchAndRestart "" (::
+  task:: catch-and-restart "" (::
     while true:
       msg := in.receive
       // LORA and heartbeats
@@ -213,38 +213,38 @@ handle_http_request request/http.RequestIncoming writer/http.ResponseWriter? htt
   if resource == "poll": resource = "/poll" 
   if resource == "post":
     resource = "/post" 
-    lastPageId = 0 // Just assume that this might have caused a redraw..
+    lastpage-id = 0 // Just assume that this might have caused a redraw..
   httpMsgService.handle-http-request request writer
 
-lastPageId := 100
+lastpage-id := 100
 
 sendStartupPage comms/services.Comms --onlyIfNew=true:
-  if onlyIfNew and lastPageId == 101: return
-  lastPageId = 101
+  if onlyIfNew and lastpage-id == 101: return
+  lastpage-id = 101
   // TODO display a QR code..?
   line2 := ""
   if connected-clients.size >= 1:
     line2 = "Clients: $connected-clients.size"
-  comms.send (messages.TextPage.toMsg
-      --pageId=101
-      --pageTitle="Lightbug @ MWC 2025"
+  comms.send (messages.TextPage.to-msg
+      --page-id=101
+      --page-title="Lightbug @ MWC 2025"
       --line1="Connect to the WiFi hotspot:"
       // --line2="$ssid / $password"
   ) --now=true
-  comms.send (messages.DrawBitmap.toMsg --pageId=101 --bitmapData=lightbug3030 --bitmapWidth=30 --bitmapHeight=30 --bitmapX=( SCREEN_WIDTH - 30 ) --bitmapY=0) --now=true
+  comms.send (messages.DrawBitmap.to-msg --page-id=101 --bitmap-data=lightbug-30-30 --bitmap-width=30 --bitmap-height=30 --bitmap-x=( SCREEN_WIDTH - 30 ) --bitmap-y=0) --now=true
 
 updateStartupPageClients comms/services.Comms:
-  if lastPageId != 101: return // only update 101 page if it is the last one
+  if lastpage-id != 101: return // only update 101 page if it is the last one
   connClientsLine := ""
   if connected-clients.size >= 1:
     connClientsLine = "Clients: $connected-clients.size"
-  comms.send (messages.TextPage.toMsg --pageId=101 --line2="$connClientsLine" ) --now=true // only update line 3
-  comms.send (messages.DrawBitmap.toMsg --pageId=101 --bitmapData=lightbug3030 --bitmapWidth=30 --bitmapHeight=30 --bitmapX=( SCREEN_WIDTH - 30 ) --bitmapY=0) --now=true
+  comms.send (messages.TextPage.to-msg --page-id=101 --line2="$connClientsLine" ) --now=true // only update line 3
+  comms.send (messages.DrawBitmap.to-msg --page-id=101 --bitmap-data=lightbug-30-30 --bitmap-width=30 --bitmap-height=30 --bitmap-x=( SCREEN_WIDTH - 30 ) --bitmap-y=0) --now=true
 
-sendPresetPage comms/services.Comms pageId/int --onlyIfNew=true:
-  if onlyIfNew and lastPageId == pageId: return
-  lastPageId = pageId
-  comms.sendRawBytes presetScreens[pageId] --flush=false // Don't flush, as these are large ammounts of bytes
+sendPresetPage comms/services.Comms page-id/int --onlyIfNew=true:
+  if onlyIfNew and lastpage-id == page-id: return
+  lastpage-id = page-id
+  comms.send-raw-bytes presetScreens[page-id] --flush=false // Don't flush, as these are large ammounts of bytes
 
 randomSSID -> string:
   r := random 1000 9999
