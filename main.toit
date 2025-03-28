@@ -51,7 +51,7 @@ custom-actions := {
 device := devices.ZCard
 stobe := Strobe
 comms := services.Comms --device=device
-httpMsgService := services.HttpMsg device comms --serve=false --port=80 --custom-actions=custom-actions --response-message-formatter=(:: | writer msg prefix |
+httpMsgService := services.HttpMsg device comms --serve=false --port=80 --custom-actions=custom-actions --subscribe-lora=true --listen-and-log-all=true --response-message-formatter=(:: | writer msg prefix |
   // TODO it would be nice to have a default one of these provided by httpMsgService
   if msg.type == messages.LastPosition.MT:
     data := messages.LastPosition.from-data msg.data
@@ -110,15 +110,6 @@ main:
 
   comms.send (messages.BuzzerControl.do-msg --duration=50 --frequency=3.0) --now=true // beep on startup
   sendStartupPage comms --onlyIfNew=false
-
-  in := comms.inbox "lb/mwc" --size=10
-  task:: catch-and-restart "" (::
-    while true:
-      msg := in.receive
-      // LORA and heartbeats
-      if msg.type == 1004 or msg.type == messages.Heartbeat.MT:
-        httpMsgService.queue-messages-for-polling msg
-  )
 
   if isInDevelopment:
     // Just serve the HTTP server
