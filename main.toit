@@ -36,6 +36,7 @@ comms/services.Comms? := null
 // And some state
 ssid := ""
 password := ""
+ip := ""
 
 isInDevelopment -> bool:
   defines := assets.decode.get "jag.defines"
@@ -137,25 +138,32 @@ robustMain:
         writer.out.write "$prefix Received message ($msg-status): $(stringify-all-bytes msg.bytes-for-protocol --short=true --commas=false --hex=false)\n"
     )
 
-  comms.send (messages.BuzzerControl.do-msg --duration=50 --frequency=3.0) --now=true // beep on startup
-  sendStartupPage comms --onlyIfNew=false
+  while true:
+    // Get the network
+    network/net.Interface? := null
+    if isInDevelopment:
+      network = net.open
+    else:
+      network = wifi.establish
+        --ssid=ssid
+        --password=password
 
-  if isInDevelopment:
-    // Just serve the HTTP server
-    run_http net.open httpMsgService
-  else:
-    // Start the access point loop
-    while true:
-      network_ap := wifi.establish
-          --ssid=ssid
-          --password=password
-      try:
+    // Run the app, depending on mode
+    try:
+      ip = "$(network.address)"
+      comms.send (messages.BuzzerControl.do-msg --duration=50 --frequency=3.0) --now=true // beep on startup
+      sendStartupPage comms --onlyIfNew=false
+
+      if isInDevelopment:
+        // Just serve the HTTP server
+        run_http net.open httpMsgService
+      else:
         Task.group --required=2 [
-          :: run_dns network_ap,
-          :: run_http network_ap httpMsgService,
+          :: run_dns network,
+          :: run_http network httpMsgService,
         ]
-      finally:
-        network_ap.close
+    finally:
+      network.close
 
 run_dns network/net.Interface -> none:
   device_ip_address := network.address
@@ -210,25 +218,16 @@ sendStartupPage comms/services.Comms --onlyIfNew=true:
 
   // TODO display a QR code..?
 
-  comms.send --now=true 
-    messages.DrawBitmap.to-msg
-      --page-id=101
-      --redraw-type=5 // ClearDontDraw
-      --bitmap-data=lightbug-30-30
-      --bitmap-width=30
-      --bitmap-height=30
-      --bitmap-x=( SCREEN_WIDTH - 30 )
-      --bitmap-y=( SCREEN_HEIGHT - 30 )
-
   line2 := ""
   line3 := ""
-  
+  line4 := "IP: $ip"
+
   if isInDevelopment:
     effective := firmware.config["wifi"]
     fw-ssid/string? := effective.get wifi.CONFIG-SSID
-    fw-password/string := effective.get wifi.CONFIG-PASSWORD --if-absent=: ""
+    // fw-password/string := effective.get wifi.CONFIG-PASSWORD --if-absent=: ""
     line2 = "SSID: $fw-ssid"
-    line3 = "Pass: ******"
+    line3 = "Pass: ******" // Blank out any pre configured password
   else:
     line2 = "SSID: ssid"
     line3 = "Pass: $password"
@@ -236,11 +235,22 @@ sendStartupPage comms/services.Comms --onlyIfNew=true:
   comms.send --now=true 
     messages.TextPage.to-msg
       --page-id=101
-      --redraw-type=4 // FullRedrawWithoutClear
+      --redraw-type=5 // ClearDontDraw
       --page-title="Lightbug @ Hardware Pioneers"
       --line1="Connect to the WiFi..."
       --line2=line2
       --line3=line3
+      --line4=line4
+
+  comms.send --now=true
+    messages.DrawBitmap.to-msg
+      --page-id=101
+      --redraw-type=4 // FullRedrawWithoutClear
+      --bitmap-data=lightbug-30-30
+      --bitmap-width=30
+      --bitmap-height=30
+      --bitmap-x=( SCREEN_WIDTH - 30 )
+      --bitmap-y=( SCREEN_HEIGHT - 30 )
 
 sendPresetPage comms/services.Comms page-id/int --onlyIfNew=true:
   if onlyIfNew and lastpage-id == page-id: return
