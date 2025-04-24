@@ -11,6 +11,11 @@ import .preset-screens
 import log
 import monitor
 import gpio
+import writer
+import system
+import gpio
+import io
+import device show name
 
 import encoding.url
 
@@ -38,6 +43,137 @@ ssid := ""
 password := ""
 ip := ""
 
+null-writer := NullAndFakeWriter
+loraListening := true
+loraEmitting := false
+partyMode := false
+custom-handlers := {
+  "page:$(101)": (:: | writer |
+    sendStartupPage comms --onlyIfNew=false
+    writer.write "Showing WiFi page\n"
+    ),
+  "page:$(SPEC-PAGE)": (:: | writer |
+    sendPresetPage comms SPEC-PAGE
+    writer.write "Showing Spec page\n"
+    ),
+  "page:$(HARDWARE-PAGE)": (:: | writer |
+    sendPresetPage comms HARDWARE-PAGE
+    writer.write "Showing Hardware page\n"
+    ),
+  "page:$(CONTAINERS-PAGE)": (:: | writer |
+    sendPresetPage comms CONTAINERS-PAGE
+    writer.write "Showing Containers page\n"
+    ),
+  "page:$(SHIPPING-PAGE)": (:: | writer |
+    sendPresetPage comms SHIPPING-PAGE
+    writer.write "Showing Shipping page\n"
+    ),
+  "page:$(TAGLINE-PAGE)": (:: | writer |
+    sendPresetPage comms TAGLINE-PAGE
+    writer.write "Showing Tagline page\n"
+    ),
+  "page:$(TAGLINE2-PAGE)": (:: | writer |
+    sendPresetPage comms TAGLINE2-PAGE
+    writer.write "Showing Tagline 2 page\n"
+    ),
+  "lora:listen": (:: | writer |
+    if not loraListening:
+      writer.write "LORA listen once started\n"
+      comms.send (messages.Lora.do-msg --payload="listening".to-byte-array --receive-ms=30000) --now=true
+    else:
+      writer.write "LORA listen loop already started, so can't listen once\n"
+    ),
+  "lora:listen-loop": (:: | writer |
+    writer.write "LORA listen loop started\n"
+    loraListening = true
+    ),
+  "lora:emit": (:: | writer |
+    writer.write "LORA emit started\n"
+    loraEmitting = true
+    ),
+  "lora:stop": (:: | writer |
+    writer.write "LORA emit & listen loop stopped\n"
+    loraListening = false
+    loraEmitting = false
+    ),
+  // Take control of the strobe messages, for LORA stuff
+  "strobe:OFF": (:: | writer |
+      partyMode = false
+      writer.write "Strobe: Off\n"
+      device.strobe.set false false false
+      if loraEmitting:
+        comms.send (messages.Lora.do-msg --payload="custom:strobe:OFF".to-byte-array --receive-ms=100) --now=true
+    ),
+  "strobe:R": (:: | writer |
+      partyMode = false
+      writer.write "Strobe: Red\n"
+      device.strobe.set true false false
+      if loraEmitting:
+        comms.send (messages.Lora.do-msg --payload="custom:strobe:R".to-byte-array --receive-ms=100) --now=true
+    ),
+  "strobe:G": (:: | writer |
+      partyMode = false
+      writer.write "Strobe: Green\n"
+      device.strobe.set false true false
+      if loraEmitting:
+        comms.send (messages.Lora.do-msg --payload="custom:strobe:G".to-byte-array --receive-ms=100) --now=true
+    ),
+  "strobe:B": (:: | writer |
+      partyMode = false
+      writer.write "Strobe: Blue\n"
+      device.strobe.set false false true
+      if loraEmitting:
+        comms.send (messages.Lora.do-msg --payload="custom:strobe:B".to-byte-array --receive-ms=100) --now=true
+    ),
+  "strobe:C": (:: | writer |
+      partyMode = false
+      writer.write "Strobe: Cyan\n"
+      device.strobe.set false true true
+      if loraEmitting:
+        comms.send (messages.Lora.do-msg --payload="custom:strobe:C".to-byte-array --receive-ms=100) --now=true
+    ),
+  "strobe:M": (:: | writer |
+      partyMode = false
+      writer.write "Strobe: Magenta\n"
+      device.strobe.set true false true
+      if loraEmitting:
+        comms.send (messages.Lora.do-msg --payload="custom:strobe:M".to-byte-array --receive-ms=100) --now=true
+    ),
+  "strobe:Y": (:: | writer |
+      partyMode = false
+      writer.write "Strobe: Yellow\n"
+      device.strobe.set true true false
+      if loraEmitting:
+        comms.send (messages.Lora.do-msg --payload="custom:strobe:Y".to-byte-array --receive-ms=100) --now=true
+    ),
+  "strobe:W": (:: | writer |
+      partyMode = false
+      writer.write "Strobe: White\n"
+      device.strobe.set true true true
+      if loraEmitting:
+        comms.send (messages.Lora.do-msg --payload="custom:strobe:W".to-byte-array --receive-ms=100) --now=true
+    ),
+  "strobe:PARTY": (:: | writer |
+      partyMode = true
+      writer.write "Strobe: Party\n"
+      if loraEmitting:
+        comms.send (messages.Lora.do-msg --payload="custom:strobe:PARTY".to-byte-array --receive-ms=100) --now=true
+      task:: while partyMode:
+        if not partyMode:
+          break
+        device.strobe.set true false false
+        sleep (Duration --ms=10)
+        if not partyMode:
+          break
+        device.strobe.set false true false
+        sleep (Duration --ms=10)
+        if not partyMode:
+          break
+        device.strobe.set false false true
+        sleep (Duration --ms=10)
+    ),
+  }
+
 isInDevelopment -> bool:
   defines := assets.decode.get "jag.defines"
     --if-present=: tison.decode it
@@ -47,6 +183,7 @@ isInDevelopment -> bool:
   return defines.get "lb-dev" --if-absent=(:false) --if-present=(:true)
 
 main:
+  log.set-default (log.default.with-level log.INFO-LEVEL)
   catch-and-restart "robustMain" (:: robustMain )
 
 robustMain:
@@ -55,11 +192,13 @@ robustMain:
   log.info "Running with ssid $ssid and password $password"
 
   comms = services.Comms --device=device
+  loraInbox := comms.inbox "lora"
+
   httpMsgService := services.HttpMsg device comms 
     --serve=false
     --port=80
     --custom-actions={
-      "MWC Pages": {
+      "Lightbug Pages": {
         "WiFi": "custom:page:$(101)",
         "Spec": "custom:page:$(SPEC-PAGE)",
         "Hardware": "custom:page:$(HARDWARE-PAGE)",
@@ -67,75 +206,52 @@ robustMain:
         "Shipping": "custom:page:$(SHIPPING-PAGE)",
         "Tagline": "custom:page:$(TAGLINE-PAGE)",
         "Tagline 2": "custom:page:$(TAGLINE2-PAGE)",
+      },
+      "LORA Demo": {
+        "Listen 30s timeout": "custom:lora:listen",
+        "Listen loop": "custom:lora:listen-loop",
+        "Emit LEDs": "custom:lora:emit",
+        "Stop": "custom:lora:stop",
       }
     }
-    --custom-handlers={
-      "page:$(101)": (:: | writer |
-        sendStartupPage comms --onlyIfNew=false
-        writer.out.write "Showing WiFi page\n"
-        ),
-      "page:$(SPEC-PAGE)": (:: | writer |
-        sendPresetPage comms SPEC-PAGE
-        writer.out.write "Showing Spec page\n"
-        ),
-      "page:$(HARDWARE-PAGE)": (:: | writer |
-        sendPresetPage comms HARDWARE-PAGE
-        writer.out.write "Showing Hardware page\n"
-        ),
-      "page:$(CONTAINERS-PAGE)": (:: | writer |
-        sendPresetPage comms CONTAINERS-PAGE
-        writer.out.write "Showing Containers page\n"
-        ),
-      "page:$(SHIPPING-PAGE)": (:: | writer |
-        sendPresetPage comms SHIPPING-PAGE
-        writer.out.write "Showing Shipping page\n"
-        ),
-      "page:$(TAGLINE-PAGE)": (:: | writer |
-        sendPresetPage comms TAGLINE-PAGE
-        writer.out.write "Showing Tagline page\n"
-        ),
-      "page:$(TAGLINE2-PAGE)": (:: | writer |
-        sendPresetPage comms TAGLINE2-PAGE
-        writer.out.write "Showing Tagline 2 page\n"
-        ),
-      }
+    --custom-handlers=custom-handlers
     --subscribe-lora=true
     --listen-and-log-all=true
     --response-message-formatter=(:: | writer msg prefix |
       // TODO it would be nice to have a default one of these provided by httpMsgService
       if msg.type == messages.LastPosition.MT:
         data := messages.LastPosition.from-data msg.data
-        writer.out.write "$prefix Last position: $data\n"
+        writer.write "$prefix Last position: $data\n"
       else if msg.type == messages.Status.MT:
         data := messages.Status.from-data msg.data
-        writer.out.write "$prefix Status: $data\n"
+        writer.write "$prefix Status: $data\n"
       else if msg.type == messages.DeviceIds.MT:
         data := messages.DeviceIds.from-data msg.data
-        writer.out.write "$prefix Device IDs: $data\n"
+        writer.write "$prefix Device IDs: $data\n"
       else if msg.type == messages.DeviceTime.MT:
         data := messages.DeviceTime.from-data msg.data
-        writer.out.write "$prefix Device time: $data\n"
+        writer.write "$prefix Device time: $data\n"
       else if msg.type == messages.Temperature.MT:
         data := messages.Temperature.from-data msg.data
-        writer.out.write "$prefix Temperature: $data\n"
+        writer.write "$prefix Temperature: $data\n"
       else if msg.type == messages.Pressure.MT:
         data := messages.Pressure.from-data msg.data
-        writer.out.write "$prefix Pressure: $data\n"
+        writer.write "$prefix Pressure: $data\n"
       else if msg.type == messages.BatteryStatus.MT:
         data := messages.BatteryStatus.from-data msg.data
-        writer.out.write "$prefix Battery status: $data\n"
+        writer.write "$prefix Battery status: $data\n"
       else if msg.type == messages.Heartbeat.MT:
-        writer.out.write "$prefix Heartbeat\n"
-      else if msg.type == 1004:
+        writer.write "$prefix Heartbeat\n"
+      else if msg.type == messages.Lora.MT:
         // field 2 is the data
         bytes := msg.data.get-data 2
         ascii := msg.data.get-data-ascii 2
-        writer.out.write "$prefix LORA message: ascii:$(ascii) bytes:$(stringify-all-bytes bytes --short=true --commas=false --hex=false)\n"
+        writer.write "$prefix LORA message: ascii:$(ascii) bytes:$(stringify-all-bytes bytes --short=true --commas=false --hex=false)\n"
       else:
         msg-status := "null"
         if msg.msg-status != null:
           msg-status = protocol.Header.STATUS_MAP.get msg.msg-status
-        writer.out.write "$prefix Received message ($msg-status): $(stringify-all-bytes msg.bytes-for-protocol --short=true --commas=false --hex=false)\n"
+        writer.write "$prefix Received message ($msg-status): $(stringify-all-bytes msg.bytes-for-protocol --short=true --commas=false --hex=false)\n"
     )
 
   while true:
@@ -145,8 +261,8 @@ robustMain:
       network = net.open
     else:
       network = wifi.establish
-        --ssid=ssid
-        --password=password
+        --ssid="$ssid"
+        --password="$password"
 
     // Run the app, depending on mode
     try:
@@ -154,14 +270,37 @@ robustMain:
       comms.send (messages.BuzzerControl.do-msg --duration=50 --frequency=3.0) --now=true // beep on startup
       sendStartupPage comms --onlyIfNew=false
 
-      if isInDevelopment:
-        // Just serve the HTTP server
-        run_http net.open httpMsgService
-      else:
-        Task.group --required=2 [
-          :: run_dns network,
-          :: run_http network httpMsgService,
-        ]
+      tasks := [
+        :: run_http network httpMsgService,
+
+        // Lora listen loop: Ask the STM to keep listening for LORA messages
+        :: while true:
+            if loraListening:
+              (comms.send (messages.Lora.do-msg --payload="listening".to-byte-array --receive-ms=10000) --now=true --withLatch=true).get
+              sleep --ms=10000
+            else:
+              sleep --ms=1000,
+
+        :: while true:
+            sleep --ms=100
+            e := catch --trace=true:
+              msgIn := loraInbox.receive
+              if msgIn.type == messages.Lora.MT:
+                data := messages.Lora.from-data msgIn.data
+                dataS := data.payload.to-string
+                log.info "LORA message received: $(dataS)"
+                if custom-handlers.get (dataS.replace "custom:" ""):
+                  log.info "Custom handler found for LORA $(dataS), calling"
+                  custom-handlers[dataS.replace "custom:" ""].call null-writer
+            if e:
+              log.error "Error in LORA message handler: $(e)"
+
+      ]
+
+      if not isInDevelopment:
+        tasks.add :: run_dns network
+
+      Task.group --required=tasks.size tasks
     finally:
       network.close
 
@@ -229,7 +368,7 @@ sendStartupPage comms/services.Comms --onlyIfNew=true:
     line2 = "SSID: $fw-ssid"
     line3 = "Pass: ******" // Blank out any pre configured password
   else:
-    line2 = "SSID: ssid"
+    line2 = "SSID: $ssid"
     line3 = "Pass: $password"
 
   comms.send --now=true 
@@ -259,7 +398,12 @@ sendPresetPage comms/services.Comms page-id/int --onlyIfNew=true:
 
 randomSSID -> string:
   r := random 1000 9999
-  return "LB-$r"
+  return "LB-$(r)"
 randomPassword -> string:
-  r := random 1000 9999
-  return "pass-$r"
+  // r := random 1000 9999
+  return "demo-pass"
+  // return "LB-$(name)"
+
+class NullAndFakeWriter:
+  write data -> none:
+    // Do nothing

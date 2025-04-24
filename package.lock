@@ -22,8 +22,8 @@ packages:
   toit-lightbug:
     url: github.com/lightbug-io/toit-lightbug
     name: lightbug
-    version: 0.10.0
-    hash: a7354ab302657ee6f79584cd16bf1c6c4cdc7ea9
+    version: 0.12.0
+    hash: c21685cd73315e641f7b84c3a229c8d327d300d7
     prefixes:
       coordinate: toit-coordinate
       http: pkg-http

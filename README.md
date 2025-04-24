@@ -19,5 +19,5 @@ jag container install demo ./main.toit -D lb-dev=1
 **To disable jaguar, and setup an access point on the ESP**
 
 ```sh
-jag container install demo ./main.toit -D jag.disabled -D jag.timeout=16h
+jag container install demo ./main.toit -D jag.disabled -D jag.timeout=240h
 ```

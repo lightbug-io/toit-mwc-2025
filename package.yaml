@@ -7,4 +7,4 @@ dependencies:
     version: ^2.9.0
   lightbug:
     url: github.com/lightbug-io/toit-lightbug
-    version: ^0.10.0
+    version: ^0.12.0
